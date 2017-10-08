@@ -4,6 +4,7 @@ from io import StringIO
 
 NSim = 5000 # I know the number of simulations
 
+
 # This is a quick and dirty way to connect to S3, not to be used in production
 session = Session(aws_access_key_id='AWS_ACCESS_KEY',
     aws_secret_access_key='AWS_SECRET_ACCESS_KEY')
@@ -19,7 +20,6 @@ block = ''
 npv_cube = np.zeros((NSim,len(T),2))
 
 #quick way to load, I am sure there are better ways
-
 for line in data_file:
     block += line.replace('[','').replace(']','').lstrip()
 data_file.close()
@@ -69,11 +69,13 @@ plt.title("PFE Curves")
 plt.legend(loc='upper left')
 
 # calculate the maximum pfe
-MPFE = np.max(coll_PFE_curve)
-print 'Maximum Collateralized PFE:%f' % MPFE
-#302293.206
-
 MPFE = np.max(uncoll_PFE_curve)
 print 'Maximum Uncollateralized PFE:%f' % MPFE
-#260805.285
+# Maximum Uncollateralized PFE:260962.609258
+
+MPFE = np.max(coll_PFE_curve)
+print 'Maximum Collateralized PFE:%f' % MPFE
+# Maximum Collateralized PFE:252916.082352
+
+
 

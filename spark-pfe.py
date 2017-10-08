@@ -256,7 +256,7 @@ def calc_exposure(rnumbers, time_grid, br_dict):
     # define the NPV cube array
     # number of rows = number of dates in time-grid
     # number of columns = 2 (collateralized and uncollateralized NPV)
-    npvMat = np.zeros((len(time_grid),2))
+    npvMat = np.zeros((len(time_grid),2), dtype=np.float64)
 
     # utility method to calc FxFwd exposure
     def fxfwd_exposure(date, spot, usd_curve):
@@ -275,7 +275,9 @@ def calc_exposure(rnumbers, time_grid, br_dict):
         nettingset_npv += swaps[idx][0].NPV()
     fxfwd_exp = fxfwd_exposure(today, eurusd_fx_spot, usd_t0_curve)
     nettingset_npv += fxfwd_exp
-    npvMat[0] = nettingset_npv
+    npvMat[0,0] = nettingset_npv
+    # assume 100K collateral has been posted already
+    npvMat[0,1] = nettingset_npv - 100000.0
 
     # Hull White parameter estimations
     def gamma(t):
@@ -301,9 +303,12 @@ def calc_exposure(rnumbers, time_grid, br_dict):
     spotmat[:] = eurusd_fx_spot
 
     # CSA terms for Collateral movements
-    IA1 = 0; IA2 = 0; threshold1 = 50000.0; threshold2 = 50000.0; MTA1 = 25000.0; MTA2 = 25000;rounding = 5000.0
+    IA1 = 0; IA2 = 0; threshold1 = 100000.0; threshold2 = 100000.0; MTA1 = 25000.0; MTA2 = 25000.0;rounding = 5000.0
     collateral_held = IA2 - IA1
-    collateral_posted = 0.0
+    # assume collateral posted last week was 100K, a reasonable number given the exposure was about
+    # 280K and 50,000 Threshold
+    collateral_posted = 100000.0
+
 
     # the main loop of NPV computations
     for iT in xrange(1, len(time_grid)):
@@ -329,7 +334,7 @@ def calc_exposure(rnumbers, time_grid, br_dict):
         eur_disc_factors = [1.0] + [A(time_grid[iT], time_grid[iT] + k) *
                                     np.exp(- B(time_grid[iT], time_grid[iT] + k) * rnew) for k in xrange(1, maturity + 1)]
 
-        if dates[iT] > longest_swap_maturity:
+        if dates[iT].serialNumber() > longest_swap_maturity.serialNumber():
             break
 
         # very important to reset the valuation date
@@ -359,40 +364,32 @@ def calc_exposure(rnumbers, time_grid, br_dict):
             swaps[s][0].setPricingEngine(swap_engine)
             nettingset_npv += swaps[s][0].NPV()
 
-        if dates[iT] <= fx_maturity:
+        if dates[iT].serialNumber() <= fx_maturity.serialNumber():
             fxfwd_exp = fxfwd_exposure(dates[iT], spotmat[iT], usd_crv)
             nettingset_npv += fxfwd_exp
 
-        # we have uncollateralized netting set NPV
+        # uncollateralized netting set NPV
         npvMat[iT,0] = nettingset_npv
-        prev_exposure = npvMat[iT-1,1]
-        print 'prev_exposure:%f' % prev_exposure
+
         collateral_held = collateral_held + collateral_posted
-        print 'collateral_held:%f' % collateral_held
         nettingset_npv = nettingset_npv + IA2 - IA1
-        print 'nettingset_npv:%f' % nettingset_npv
+        # Eq. 8.6 Jon Gregory Counterparty CVA book 2nd edition
         collateral_required = max(nettingset_npv - threshold2, 0) \
                               - max(-nettingset_npv - threshold1, 0) - collateral_held
-        print 'collateral_required:%f' % collateral_required
         collateral_posted = collateral_required
         if collateral_posted > 0:
             if collateral_posted < MTA2:
                 collateral_posted = 0.
         elif -collateral_posted < MTA1:
             collateral_posted = 0.
-        print 'collateral_posted:%f' % collateral_posted
         if collateral_posted <> 0. and rounding <> 0.:
             collateral_posted = math.ceil(collateral_posted/rounding) * rounding
-        print 'collateral_posted after rounding:%f' % collateral_posted
         if collateral_posted < 0:
             collateral_held = collateral_held + collateral_posted
             collateral_posted = 0.
-        print 'collateral_held:%f' % collateral_held
-        # we have collateralized netting set NPV
+        # collateralized netting set NPV
         npvMat[iT,1] = nettingset_npv - collateral_held
-        print 'npvMat:%f' % npvMat[iT,1]
-        print '========================================='
-    return npvMat
+    return np.array2string(npvMat, formatter={'float_kind':'{0:.6f}'.format})
 
 
 if __name__ == "__main__":
